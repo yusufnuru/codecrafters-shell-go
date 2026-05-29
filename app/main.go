@@ -50,8 +50,19 @@ func main() {
 			} else {
 				fmt.Println(args[0] + " not found")
 			}
+
 		default:
-			fmt.Println(cmd + ": command not found")
+			if _, err := exec.LookPath(cmd); err == nil {
+				c := exec.Command(cmd, args...)
+				c.Stdin = os.Stdin
+				c.Stdout = os.Stdout
+				c.Stderr = os.Stderr
+				if err := c.Run(); err != nil {
+					fmt.Fprintln(os.Stderr, "Error executing command:", err)
+				}
+			} else {
+				fmt.Println(cmd + ": command not found")
+			}
 		}
 	}
 }
