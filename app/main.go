@@ -14,17 +14,29 @@ func main() {
 		fmt.Print("$ ")
 
 		// Wait for user input
-		command, err := reader.ReadString('\n')
+		input, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error reading input:", err)
 			os.Exit(1)
 		}
 
-		command = strings.TrimSpace(command)
-		if command == "exit" {
-			os.Exit(0)
+		input = strings.TrimSpace(input)
+		tokens := strings.Fields(input)
+
+		if len(tokens) == 0 {
+			continue
 		}
 
-		fmt.Println(command + ": command not found")
+		cmd := tokens[0]
+		args := tokens[1:]
+
+		switch cmd {
+		case "exit":
+			os.Exit(0)
+		case "echo":
+			fmt.Println(strings.Join(args, " "))
+		default:
+			fmt.Println(cmd + ": command not found")
+		}
 	}
 }
