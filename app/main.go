@@ -11,7 +11,7 @@ import (
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
-	builtins := []string{"echo", "type", "exit", "pwd"}
+	builtins := []string{"echo", "type", "exit", "pwd", "cd"}
 
 	for {
 		fmt.Print("$ ")
@@ -56,6 +56,19 @@ func main() {
 				fmt.Fprintln(os.Stderr, "pwd:", err)
 			} else {
 				fmt.Println(dir)
+			}
+		case "cd":
+			path := args[0]
+			if path == "~" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "cd:", err)
+					continue
+				}
+				path = home
+			}
+			if err := os.Chdir(path); err != nil {
+				fmt.Fprintln(os.Stderr, "cd: "+args[0]+": No such file or directory")
 			}
 		default:
 			if _, err := exec.LookPath(cmd); err == nil {
