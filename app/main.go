@@ -88,16 +88,27 @@ func main() {
 func tokenize(input string) []string {
 	var tokens []string
 	var current strings.Builder
-	inQuote := false
+	inDoubleQuote := false
+	inSingleQuote := false
 
 	for i := 0; i < len(input); i++ {
 		ch := input[i]
 
 		switch ch {
 		case '\'':
-			inQuote = !inQuote
+			if inDoubleQuote {
+				current.WriteByte(ch)
+			} else {
+				inSingleQuote = !inSingleQuote
+			}
+		case '"':
+			if inSingleQuote {
+				current.WriteByte(ch)
+			} else {
+				inDoubleQuote = !inDoubleQuote
+			}
 		case ' ':
-			if inQuote {
+			if inSingleQuote || inDoubleQuote {
 				current.WriteByte(ch)
 			} else if current.Len() > 0 {
 				tokens = append(tokens, current.String())
