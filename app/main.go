@@ -115,9 +115,13 @@ func tokenize(input string) []string {
 				current.Reset()
 			}
 		case '\\':
-			i++
-			if i < len(input) {
-				current.WriteByte(input[i])
+			if inSingleQuote {
+				current.WriteByte(ch)
+			} else {
+				i++
+				if i < len(input) {
+					current.WriteByte(input[i])
+				}
 			}
 		default:
 			current.WriteByte(ch)
