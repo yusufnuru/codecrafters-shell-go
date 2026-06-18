@@ -114,6 +114,11 @@ func tokenize(input string) []string {
 				tokens = append(tokens, current.String())
 				current.Reset()
 			}
+		case '\\':
+			i++
+			if i < len(input) {
+				current.WriteByte(input[i])
+			}
 		default:
 			current.WriteByte(ch)
 		}
