@@ -32,11 +32,23 @@ func main() {
 		cmd := tokens[0]
 		args := tokens[1:]
 
+		if len(tokens) > 2 && ( tokens[len(tokens)-2] == "1>" || tokens[len(tokens)-2] == "2>" 	) {
+			file, err := os.Create(tokens[2])
+			if err != nil {
+				panic(err)
+			}
+			fmt.Fprintln(file, strings.Join(args[:1], " "))
+			file.Close()
+			args = args[:len(args)-2]
+			continue
+		}
+
 		switch cmd {
 		case "exit":
 			os.Exit(0)
 		case "echo":
 			fmt.Println(strings.Join(args, " "))
+
 		case "type":
 			if len(tokens) < 2 {
 				fmt.Fprintln(os.Stderr, "type: missing argument")
