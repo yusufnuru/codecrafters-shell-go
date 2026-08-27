@@ -3,97 +3,147 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 )
 
-func main() {
-	reader := bufio.NewReader(os.Stdin)
-	builtins := []string{"echo", "type", "exit", "pwd", "cd"}
+type Command struct {
+	Stdout io.Writer
+	Stderr io.Writer
+	exec   func(stdout, stderr io.Writer, args []string) error
+}
 
-	for {
-		fmt.Print("$ ")
+func (cmd Command) Run(args []string) error {
+	return cmd.exec(cmd.Stdout, cmd.Stderr, args[1:])
+}
 
-		// Wait for user input
-		input, err := reader.ReadString('\n')
+func handleExit(stdout, stderr io.Writer, args []string) error {
+	os.Exit(0)
+	return nil
+}
+
+func handleCD(stdout, stderr io.Writer, args []string) error {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "cd: missing argument")
+		return fmt.Errorf("cd: missing argument")
+	}
+
+	path := args[0]
+	if path == "~" {
+		home, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error reading input:", err)
-			os.Exit(1)
+			fmt.Fprintln(stderr, "cd:", err)
+			return err
 		}
+		path = home
+	}
 
-		input = strings.TrimSpace(input)
-		tokens := tokenize(input)
-		if len(tokens) == 0 {
-			continue
+	if err := os.Chdir(path); err != nil {
+		fmt.Fprintln(stderr, "cd: "+args[0]+": No such file or directory")
+		return err
+	}
+
+	return nil
+}
+
+func handlePWD(stdout, stderr io.Writer, args []string) error {
+	dir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, "pwd:", err)
+		return err
+	} else {
+		fmt.Fprintln(stdout, dir)
+	}
+	return nil
+}
+
+func handleEcho(stdout, stderr io.Writer, args []string) error {
+	fmt.Fprintln(stdout, strings.Join(args, " "))
+	return nil
+}
+
+func handleType(stdout, stderr io.Writer, args []string) error {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "type: missing argument")
+		return fmt.Errorf("type: missing argument")
+	}
+
+	if _, exists := builtins[args[0]]; exists {
+		fmt.Fprintln(stdout, args[0]+" is a shell builtin")
+	} else if path, _ := exec.LookPath(args[0]); path != "" {
+		fmt.Fprintln(stdout, args[0]+" is "+path)
+	} else {
+		fmt.Fprintln(stderr, args[0]+" not found")
+	}
+	return nil
+}
+
+var builtins map[string]Command
+
+func init() {
+	builtins = map[string]Command{
+		"exit": {exec: handleExit},
+		"echo": {exec: handleEcho},
+		"type": {exec: handleType},
+		"pwd":  {exec: handlePWD},
+		"cd":   {exec: handleCD},
+	}
+}
+
+var stdinReader = bufio.NewReader(os.Stdin)
+
+func readCommand() []string {
+	fmt.Fprint(os.Stdout, "$ ")
+
+	line, err := stdinReader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error reading input:", err)
+		os.Exit(1)
+	}
+
+	line = strings.TrimSpace(line)
+	return tokenize(line)
+}
+
+func executeCommand(args []string) {
+	if len(args) == 0 {
+		return
+	}
+
+	stdout := os.Stdout
+	if len(args) > 2 && (args[len(args)-2] == ">" || args[len(args)-2] == "1>") {
+		outputFile, err := os.Create(args[len(args)-1])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error: cannot create", args[len(args)-1])
+			return
 		}
+		defer outputFile.Close()
+		stdout = outputFile
+		args = args[:len(args)-2]
+	}
 
-		cmd := tokens[0]
-		args := tokens[1:]
+	if cmd, builtin := builtins[args[0]]; builtin {
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = stdout
+		cmd.Run(args)
+	} else if _, err := exec.LookPath(args[0]); err == nil {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = stdout
+		cmd.Stderr = os.Stderr
+		cmd.Start()
+		cmd.Wait()
+	} else {
+		fmt.Fprintln(os.Stderr, args[0]+": command not found")
+	}
+}
 
-		if len(tokens) > 2 && ( tokens[len(tokens)-2] == "1>" || tokens[len(tokens)-2] == "2>" 	) {
-			file, err := os.Create(tokens[2])
-			if err != nil {
-				panic(err)
-			}
-			fmt.Fprintln(file, strings.Join(args[:1], " "))
-			file.Close()
-			args = args[:len(args)-2]
-			continue
-		}
-
-		switch cmd {
-		case "exit":
-			os.Exit(0)
-		case "echo":
-			fmt.Println(strings.Join(args, " "))
-
-		case "type":
-			if len(tokens) < 2 {
-				fmt.Fprintln(os.Stderr, "type: missing argument")
-				continue
-			}
-			if slices.Contains(builtins, args[0]) {
-				fmt.Println(args[0] + " is a shell builtin")
-			} else if path, _ := exec.LookPath(tokens[1]); path != "" {
-				fmt.Println(args[0] + " is " + path)
-			} else {
-				fmt.Println(args[0] + " not found")
-			}
-		case "pwd":
-			dir, err := os.Getwd()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "pwd:", err)
-			} else {
-				fmt.Println(dir)
-			}
-		case "cd":
-			path := args[0]
-			if path == "~" {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					fmt.Fprintln(os.Stderr, "cd:", err)
-					continue
-				}
-				path = home
-			}
-			if err := os.Chdir(path); err != nil {
-				fmt.Fprintln(os.Stderr, "cd: "+args[0]+": No such file or directory")
-			}
-		default:
-			if _, err := exec.LookPath(cmd); err == nil {
-				c := exec.Command(cmd, args...)
-				c.Stdin = os.Stdin
-				c.Stdout = os.Stdout
-				c.Stderr = os.Stderr
-				if err := c.Run(); err != nil {
-					fmt.Fprintln(os.Stderr, "Error executing command:", err)
-				}
-			} else {
-				fmt.Println(cmd + ": command not found")
-			}
-		}
+func main() {
+	for {
+		args := readCommand()
+		executeCommand(args)
 	}
 }
 
